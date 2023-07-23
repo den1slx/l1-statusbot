@@ -25,7 +25,6 @@ def create_notifications(response_text):
 
 def check_status(chat_id, devman_token):
     long_polling_url = 'https://dvmn.org/api/long_polling/'
-    url = 'https://dvmn.org/api/user_reviews/'
     headers = {
         'Authorization': devman_token,
     }
