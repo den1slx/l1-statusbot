@@ -1,7 +1,6 @@
 import requests
 from requests.exceptions import ReadTimeout, ConnectionError as RequestsConnectionError
 
-import json
 from time import sleep
 
 from tg_bot_env import bot, devman_token, available_chat_ids, telebot
@@ -32,17 +31,21 @@ def check_status(chat_id, devman_token):
     while True:
         try:
             lp_response = requests.get(long_polling_url, headers=headers, params=params, timeout=120)
+            lp_response.raise_for_status()
         except ReadTimeout:
             continue
         except RequestsConnectionError:
             sleep(5)
             continue
-        text = json.loads(lp_response.text)
+        except requests.HTTPError:
+            sleep(60)
+            continue
+        text = lp_response.json()  # TODO rename text
         if text['status'] == 'found':
             for notification in create_notifications(text):
                 bot.send_message(chat_id, notification)
         elif text['status'] == 'timeout':
-            params = {'timestamp': f"{text['timestamp_to_request']}"}
+            params = {'timestamp': text['timestamp_to_request']}
         else:
             params = ''
 
