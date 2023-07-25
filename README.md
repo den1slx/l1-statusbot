@@ -29,8 +29,7 @@ pip install -r requirements.txt
     ```commandline
     python tg_bot.py 
     ```
-  
-* Напишите боту `/start`
+
 Если ваш id есть в `TG_CHAT_IDS` вам будет отправлено сообщение 'Рассылка уведомлений'.  
 Значит бот начал работу.
 
