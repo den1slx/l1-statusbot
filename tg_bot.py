@@ -1,9 +1,9 @@
 import requests
+from environs import Env
 from requests.exceptions import ReadTimeout, ConnectionError as RequestsConnectionError
+import telebot
 
 from time import sleep
-
-from tg_bot_env import bot, devman_token, available_chat_ids, telebot
 
 
 def create_notifications(response_text):
@@ -50,23 +50,19 @@ def check_status(chat_id, devman_token):
             params = ''
 
 
-@bot.message_handler(commands=['start'])
-def command_menu(message: telebot.types.Message):
-    if str(message.chat.id) in available_chat_ids:
-        bot.send_message(message.chat.id, f'Здравствуйте {message.from_user.username}. ')
-        check_status(message.chat.id, devman_token)
-    bot.send_message(message.chat.id, 'Nope')
-
-
-def start_bot():
-    bot.infinity_polling()
-
-
 def main():
-    start_bot()
+    for chat_id in available_chat_ids:
+        bot.send_message(chat_id, f'Рассылка уведомлений')
+        check_status(chat_id, devman_token)
 
 
 if __name__ == '__main__':
+    env = Env()
+    env.read_env()
+    devman_token = env.str('DEVMAN_TOKEN')
+    tg_bot_token = env.str('TG_BOT_TOKEN')
+    available_chat_ids = env.list('TG_CHAT_IDS')
+    bot = telebot.TeleBot(tg_bot_token)
     main()
 
 
