@@ -44,7 +44,7 @@ def check_status(chat_id, devman_token):
         if response_dict['status'] == 'found':
             for notification in create_notifications(response_dict):
                 bot.send_message(chat_id, notification)
-
+            sleep(60)
         elif response_dict['status'] == 'timeout':
             params = {'timestamp': response_dict['timestamp_to_request']}
         else:
