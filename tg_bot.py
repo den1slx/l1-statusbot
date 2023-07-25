@@ -6,9 +6,9 @@ import telebot
 from time import sleep
 
 
-def create_notifications(response_text):
+def create_notifications(response_json):
     notifications = []
-    for lesson in response_text['new_attempts']:
+    for lesson in response_json['new_attempts']:
         title = lesson['lesson_title']
         url = lesson['lesson_url']
 
@@ -40,12 +40,12 @@ def check_status(chat_id, devman_token):
         except requests.HTTPError:
             sleep(60)
             continue
-        text = lp_response.json()  # TODO rename text
-        if text['status'] == 'found':
-            for notification in create_notifications(text):
+        response_json = lp_response.json()
+        if response_json['status'] == 'found':
+            for notification in create_notifications(response_json):
                 bot.send_message(chat_id, notification)
-        elif text['status'] == 'timeout':
-            params = {'timestamp': text['timestamp_to_request']}
+        elif response_json['status'] == 'timeout':
+            params = {'timestamp': response_json['timestamp_to_request']}
         else:
             params = ''
 
