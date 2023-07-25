@@ -6,9 +6,9 @@ import telebot
 from time import sleep
 
 
-def create_notifications(response_json):
+def create_notifications(response_dict):
     notifications = []
-    for lesson in response_json['new_attempts']:
+    for lesson in response_dict['new_attempts']:
         title = lesson['lesson_title']
         url = lesson['lesson_url']
 
@@ -40,20 +40,15 @@ def check_status(chat_id, devman_token):
         except requests.HTTPError:
             sleep(60)
             continue
-        response_json = lp_response.json()
-        if response_json['status'] == 'found':
-            for notification in create_notifications(response_json):
+        response_dict = lp_response.json()
+        if response_dict['status'] == 'found':
+            for notification in create_notifications(response_dict):
                 bot.send_message(chat_id, notification)
-        elif response_json['status'] == 'timeout':
-            params = {'timestamp': response_json['timestamp_to_request']}
+
+        elif response_dict['status'] == 'timeout':
+            params = {'timestamp': response_dict['timestamp_to_request']}
         else:
             params = ''
-
-
-def main():
-    for chat_id in available_chat_ids:
-        bot.send_message(chat_id, f'Рассылка уведомлений')
-        check_status(chat_id, devman_token)
 
 
 if __name__ == '__main__':
@@ -63,6 +58,9 @@ if __name__ == '__main__':
     tg_bot_token = env.str('TG_BOT_TOKEN')
     available_chat_ids = env.list('TG_CHAT_IDS')
     bot = telebot.TeleBot(tg_bot_token)
-    main()
+    for chat_id in available_chat_ids:
+        bot.send_message(chat_id, f'Рассылка уведомлений')
+        check_status(chat_id, devman_token)
+
 
 
