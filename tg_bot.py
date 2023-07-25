@@ -22,7 +22,7 @@ def create_notifications(response_dict):
     return notifications
 
 
-def check_status(chat_id, devman_token):
+def check_status(bot, chat_id, devman_token):
     long_polling_url = 'https://dvmn.org/api/long_polling/'
     headers = {
         'Authorization': devman_token,
@@ -40,13 +40,13 @@ def check_status(chat_id, devman_token):
         except requests.HTTPError:
             sleep(60)
             continue
-        response_dict = lp_response.json()
-        if response_dict['status'] == 'found':
-            for notification in create_notifications(response_dict):
+        review = lp_response.json()
+        if review['status'] == 'found':
+            for notification in create_notifications(review):
                 bot.send_message(chat_id, notification)
             sleep(60)
-        elif response_dict['status'] == 'timeout':
-            params = {'timestamp': response_dict['timestamp_to_request']}
+        elif review['status'] == 'timeout':
+            params = {'timestamp': review['timestamp_to_request']}
         else:
             params = ''
 
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     bot = telebot.TeleBot(tg_bot_token)
     for chat_id in available_chat_ids:
         bot.send_message(chat_id, f'Рассылка уведомлений')
-        check_status(chat_id, devman_token)
+        check_status(bot, chat_id, devman_token)
 
 
 
