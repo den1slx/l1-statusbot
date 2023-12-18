@@ -42,55 +42,41 @@ def create_notifications(response_dict):
     return notifications
 
 
-def check_status(bot, chat_id, devman_token):
+def check_status(devman_token):
     long_polling_url = 'https://dvmn.org/api/long_polling/'
     headers = {
         'Authorization': devman_token,
     }
     params = ''
-    while True:
-        logger.info('start check status')
-        try:
-            lp_response = requests.get(long_polling_url, headers=headers, params=params, timeout=120)
-            lp_response.raise_for_status()
-        except ReadTimeout:
-            logger.debug('ReadTimeout')
-            continue
-        except RequestsConnectionError:
-            logger.debug('RequestsConnectionError')
-            sleep(5)
-            continue
-        except requests.HTTPError:
-            logger.debug('requests.HTTPError')
-            sleep(60)
-            continue
-        review = lp_response.json()
-        if review['status'] == 'found':
-            logger.debug("review['status'] == 'found'")
-            for notification in create_notifications(review):
-                bot.send_message(chat_id, notification)
-            sleep(60)
-        elif review['status'] == 'timeout':
-            logger.debug("review['status'] == 'timeout'")
-            params = {'timestamp': review['timestamp_to_request']}
-        else:
-            params = ''
-
-
-def spam(bot, chat_id, spam='spam', timeout=30):
-    while True:
-        bot.send_message(chat_id, spam)
-        sleep(timeout)
+    logger.info('start check status')
+    try:
+        lp_response = requests.get(long_polling_url, headers=headers, params=params, timeout=120)
+        lp_response.raise_for_status()
+    except ReadTimeout:
+        logger.debug('ReadTimeout')
+    except RequestsConnectionError:
+        logger.debug('RequestsConnectionError')
+        sleep(5)
+    except requests.HTTPError:
+        logger.debug('requests.HTTPError')
+        sleep(60)
+    review = lp_response.json()
+    if review['status'] == 'found':
+        logger.debug("review['status'] == 'found'")
+        notifications = create_notifications(review)
+        return notifications
+    else:
+        logger.debug("review['status'] == 'timeout'")
+        params = {'timestamp': review['timestamp_to_request']}
 
 
 def main():
     # env
     env = Env()
     env.read_env()
-    devman_token = env.str('DEVMAN_TOKEN')
     tg_bot_token = env.str('TG_BOT_TOKEN')
-    available_chat_ids = env.list('TG_CHAT_IDS')
     admins_ids = env.list('TG_ADMIN_IDS')
+    recipients = env.json('RECIPIENTS')
     # bot
     tg_bot = telebot.TeleBot(tg_bot_token)
     # logger
@@ -99,16 +85,16 @@ def main():
     logger.addHandler(handler)
 
     while True:
-        try:
-            for chat_id in available_chat_ids:
-                tg_bot.send_message(chat_id, f'Рассылка уведомлений')
-                # spam(tg_bot, chat_id, timeout=0) # debug
-                check_status(tg_bot, chat_id, devman_token)
-        except ApiTelegramException:
-            logger.error('ApiTelegramException (Wrong timeout)')
-        # except:
-        #     logger.error('unexpected error')
-        #     break
+        for devman_token, chat_ids in recipients.items():
+            notifications = check_status(devman_token)
+            for chat_id in chat_ids:
+                try:
+                    tg_bot.send_message(chat_id, f'Рассылка уведомлений')
+                    for notification in notifications:
+                        tg_bot.send_message(chat_id, notification)
+
+                except ApiTelegramException:
+                    logger.error('ApiTelegramException (Wrong timeout)')
 
 
 if __name__ == '__main__':
