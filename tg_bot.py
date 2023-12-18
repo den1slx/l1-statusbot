@@ -49,17 +49,10 @@ def check_status(devman_token):
     }
     params = ''
     logger.info('start check status')
-    try:
-        lp_response = requests.get(long_polling_url, headers=headers, params=params, timeout=120)
-        lp_response.raise_for_status()
-    except ReadTimeout:
-        logger.debug('ReadTimeout')
-    except RequestsConnectionError:
-        logger.debug('RequestsConnectionError')
-        sleep(5)
-    except requests.HTTPError:
-        logger.debug('requests.HTTPError')
-        sleep(60)
+    # try:
+    lp_response = requests.get(long_polling_url, headers=headers, params=params, timeout=120)
+    lp_response.raise_for_status()
+
     review = lp_response.json()
     if review['status'] == 'found':
         logger.debug("review['status'] == 'found'")
@@ -86,15 +79,25 @@ def main():
 
     while True:
         for devman_token, chat_ids in recipients.items():
-            notifications = check_status(devman_token)
-            for chat_id in chat_ids:
-                try:
-                    tg_bot.send_message(chat_id, f'Рассылка уведомлений')
-                    for notification in notifications:
-                        tg_bot.send_message(chat_id, notification)
+            try:
+                notifications = check_status(devman_token)
+            except ReadTimeout:
+                logger.debug('ReadTimeout')
+            except RequestsConnectionError:
+                logger.debug('RequestsConnectionError')
+                sleep(5)
+            except requests.HTTPError:
+                logger.debug('requests.HTTPError')
+                sleep(60)
+            if notifications:
+                for chat_id in chat_ids:
+                    try:
+                        tg_bot.send_message(chat_id, f'Рассылка уведомлений')
+                        for notification in notifications:
+                            tg_bot.send_message(chat_id, notification)
 
-                except ApiTelegramException:
-                    logger.error('ApiTelegramException (Wrong timeout)')
+                    except ApiTelegramException:
+                        logger.error('ApiTelegramException (Wrong timeout)')
 
 
 if __name__ == '__main__':
