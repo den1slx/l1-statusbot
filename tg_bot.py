@@ -42,25 +42,42 @@ def create_notifications(response_dict):
     return notifications
 
 
-def check_status(devman_token):
+def check_status(devman_token, params=''):
     long_polling_url = 'https://dvmn.org/api/long_polling/'
     headers = {
         'Authorization': devman_token,
     }
-    params = ''
     logger.info('start check status')
     # try:
     lp_response = requests.get(long_polling_url, headers=headers, params=params, timeout=120)
     lp_response.raise_for_status()
 
     review = lp_response.json()
+    logger.debug(f'old params : {params}')
     if review['status'] == 'found':
         logger.debug("review['status'] == 'found'")
         notifications = create_notifications(review)
-        return notifications
+        params = {'timestamp': review['last_attempt_timestamp']}
+        logger.debug(f'updated params: {params}')
+        return params, notifications
     else:
         logger.debug("review['status'] == 'timeout'")
         params = {'timestamp': review['timestamp_to_request']}
+        logger.debug(f'updated params: {params}')
+        return params, None
+
+
+def set_logger_level(logger, level):
+    if level == "INFO":
+        logger.setLevel(logging.INFO)
+    elif level == "WARNING":
+        logger.setLevel(logging.WARNING)
+    elif level == "ERROR":
+        logger.setLevel(logging.ERROR)
+    elif level == 'CRITICAL':
+        logger.setLevel(logging.CRITICAL)
+    else:
+        logger.setLevel(logging.DEBUG)
 
 
 def main():
@@ -68,19 +85,22 @@ def main():
     env = Env()
     env.read_env()
     tg_bot_token = env.str('TG_BOT_TOKEN')
-    admins_ids = env.list('TG_ADMIN_IDS')
+    admins_ids = env.list('TG_ADMIN_IDS', [])
+    level = env.str('LOGGING_LEVEL', 'debug').upper()
     recipients = env.json('RECIPIENTS')
     # bot
     tg_bot = telebot.TeleBot(tg_bot_token)
     # logger
-    logger.setLevel(logging.DEBUG)
+    set_logger_level(logger, level)
     handler = TelegeramLogsHandler(tg_bot, admins_ids)
     logger.addHandler(handler)
-
+    # empty token params
+    token_params = {token: '' for token in recipients.keys()}
     while True:
         for devman_token, chat_ids in recipients.items():
             try:
-                notifications = check_status(devman_token)
+                params, notifications = check_status(devman_token, params=token_params[devman_token])
+                token_params[devman_token] = params
             except ReadTimeout:
                 logger.debug('ReadTimeout')
             except RequestsConnectionError:
