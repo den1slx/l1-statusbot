@@ -2,12 +2,10 @@ import requests
 from environs import Env
 from requests.exceptions import ReadTimeout, ConnectionError as RequestsConnectionError
 import telebot
-from telebot.async_telebot import AsyncTeleBot
-from aiohttp import ClientSession
-from aiohttp.client_exceptions import ClientResponseError
+from telebot.apihelper import ApiTelegramException
 
+from time import sleep
 import logging
-import asyncio
 
 
 logger = logging.getLogger('statuslog')
@@ -23,8 +21,7 @@ class TelegeramLogsHandler(logging.Handler):
         if record.levelname == 'INFO' or record.levelname == 'DEBUG':
             log_entry = f'{record.process} {record.levelname} {self.format(record)}'
         else:
-            log_entry = f'''file: {record.filename} line:
-{record.lineno}, in {record.module} message:{self.format(record)}'''
+            log_entry = f'''file: {record.filename} line: {record.lineno}, in {record.module} message:{self.format(record)}'''
         for admin_id in self.admins:
             self.tg_bot.send_message(chat_id=admin_id, text=log_entry)
 
@@ -45,6 +42,31 @@ def create_notifications(response_dict):
     return notifications
 
 
+def check_status(devman_token, params=''):
+    long_polling_url = 'https://dvmn.org/api/long_polling/'
+    headers = {
+        'Authorization': devman_token,
+    }
+    logger.info('start check status')
+    # try:
+    lp_response = requests.get(long_polling_url, headers=headers, params=params, timeout=120)
+    lp_response.raise_for_status()
+
+    review = lp_response.json()
+    logger.debug(f'old params : {params}')
+    if review['status'] == 'found':
+        logger.debug("review['status'] == 'found'")
+        notifications = create_notifications(review)
+        params = {'timestamp': review['last_attempt_timestamp']}
+        logger.debug(f'updated params: {params}')
+        return params, notifications
+    else:
+        logger.debug("review['status'] == 'timeout'")
+        params = {'timestamp': review['timestamp_to_request']}
+        logger.debug(f'updated params: {params}')
+        return params, None
+
+
 def set_logger_level(logger, level):
     if level == "INFO":
         logger.setLevel(logging.INFO)
@@ -58,50 +80,7 @@ def set_logger_level(logger, level):
         logger.setLevel(logging.DEBUG)
 
 
-async def async_check_status(devman_token, recipients, params=''):
-    async with ClientSession() as session:
-        long_polling_url = 'https://dvmn.org/api/long_polling/'
-        headers = {
-            'Authorization': devman_token,
-        }
-        logger.info('start check status')
-        try:
-            async with session.get(
-                    url=long_polling_url, headers=headers, params=params, timeout=120, raise_for_status=True
-            ) as response:
-                review = await response.json()
-                logger.debug(f'old params : {params}')
-                if review['status'] == 'found':
-                    logger.debug("review['status'] == 'found'")
-                    notifications = create_notifications(review)
-                    params = {'timestamp': review['last_attempt_timestamp']}
-                    logger.debug(f'updated params: {params}')
-                    return params, notifications, recipients
-                else:
-                    logger.debug("review['status'] == 'timeout'")
-                    params = {'timestamp': review['timestamp_to_request']}
-                    logger.debug(f'updated params: {params}')
-                    return params, None, recipients
-        except ClientResponseError:
-            logger.debug('ClientResponseError')
-            return None, None, None
-        except ReadTimeout:
-            logger.debug('ReadTimeout')
-            return None, None, None
-        except RequestsConnectionError:
-            logger.debug('RequestsConnectionError')
-            return None, None, None
-        except requests.HTTPError:
-            logger.debug('requests.HTTPError')
-            return None, None, None
-
-
-async def async_newsletter(async_bot, chat_id, letters):
-    for letter in letters:
-        await async_bot.send_message(chat_id, letter)
-
-
-async def main():
+def main():
     # env
     env = Env()
     env.read_env()
@@ -111,34 +90,36 @@ async def main():
     recipients = env.json('RECIPIENTS')
     # bot
     tg_bot = telebot.TeleBot(tg_bot_token)
-    async_tg_bot = AsyncTeleBot(tg_bot_token)
-    # Use one token in TeleBot and AsyncTeleBot is bad ?
     # logger
     set_logger_level(logger, level)
     handler = TelegeramLogsHandler(tg_bot, admins_ids)
-    # How do async handler ?
     logger.addHandler(handler)
     # empty token params
     token_params = {token: '' for token in recipients.keys()}
-    # tasks
     while True:
-        check_status_tasks = []
         for devman_token, chat_ids in recipients.items():
-            check_status_tasks.append(
-                asyncio.create_task(async_check_status(devman_token, chat_ids, params=token_params[devman_token]))
-            )
+            try:
+                params, notifications = check_status(devman_token, params=token_params[devman_token])
+                token_params[devman_token] = params
+            except ReadTimeout:
+                logger.debug('ReadTimeout')
+            except RequestsConnectionError:
+                logger.debug('RequestsConnectionError')
+                sleep(5)
+            except requests.HTTPError:
+                logger.debug('requests.HTTPError')
+                sleep(60)
+            if notifications:
+                for chat_id in chat_ids:
+                    try:
+                        tg_bot.send_message(chat_id, f'Рассылка уведомлений')
+                        for notification in notifications:
+                            tg_bot.send_message(chat_id, notification)
 
-        check_status_result = await asyncio.gather(*check_status_tasks)
+                    except ApiTelegramException:
+                        logger.error('ApiTelegramException (Wrong timeout)')
 
-        newsletter_tasks = []
-        for params, notification, ids in check_status_result:
-            if ids and notification:
-                for chat_id in ids:
-                    newsletter_tasks.append(
-                        asyncio.create_task(async_newsletter(async_tg_bot, chat_id, notification))
-                    )
-            for task in newsletter_tasks:
-                await task
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
+
